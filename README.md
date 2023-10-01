@@ -1,2 +1,2 @@
-# Mieka-ChatBot-Plugin-Template
-a Template repo for Mieka-ChatBot-Plugin
+# EasyPin
+An extension for Mieka-ChatBot, used to create scheduled tasks accordingly

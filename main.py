@@ -47,7 +47,9 @@ class EasyPin(AbstractPlugin):
         from graia.scheduler.timers import crontabify
         from graia.ariadne.event.message import GroupMessage
         from graia.ariadne.event.lifecycle import ApplicationLaunch
-
+        from modules.cmd import RequiredPermission, NameSpaceNode, ExecutableNode
+        from modules.auth.resources import required_perm_generator
+        from modules.auth.permissions import Permission, PermissionCode
         from graia.ariadne import Ariadne
         from graia.ariadne.model import Group
         from .analyze import Preprocessor, DEFAULT_PRESET, TO_DATETIME_PRESET, DATETIME_TO_CRONTAB_PRESET
@@ -63,9 +65,24 @@ class EasyPin(AbstractPlugin):
         task_registry = TaskRegistry(self._config_registry.get_config(self.CONFIG_TASKS_SAVE_PATH), ReminderTask)
 
         def _test_convert(string: str) -> str:
+            """
+            Convert the given string to a datetime using the to_datetime_processor.
+
+            Args:
+                string (str): The string to be converted.
+
+            Returns:
+                str: The converted datetime string.
+            """
             return to_datetime_processor.process(string)
 
         def _help() -> str:
+            """
+            Returns a string containing help information for the available commands.
+
+            :return: A string containing help information for the available commands.
+            :rtype: str
+            """
             cmds = [
                 self.__TASK_SET_CMD,
                 self.__TASK_LIST_CMD,
@@ -78,6 +95,12 @@ class EasyPin(AbstractPlugin):
             return stdout
 
         def _task_list() -> str:
+            """
+            Returns a string representation of the task list.
+
+            Returns:
+                str: A string containing the task list, where each task is represented by its name and crontab schedule.
+            """
             task_registry.remove_outdated_tasks()
             temp_string = "Task List:\n"
             for crontab, tasks in task_registry.tasks.items():
@@ -87,6 +110,12 @@ class EasyPin(AbstractPlugin):
             return temp_string
 
         def _clean() -> str:
+            """
+            Cleans all scheduled tasks and removes them from the task registry.
+
+            Returns:
+                str: A message indicating the number of tasks cleaned.
+            """
             clean_task_ct = 0
             for scheduled_task in scheduler.schedule_tasks:
                 if not scheduled_task.stopped:
@@ -133,17 +162,44 @@ class EasyPin(AbstractPlugin):
             # Return a deletion message
             return f"Delete {len(tasks_to_delete)} Tasks"
 
-        tree = {
-            self.__TASK_CMD: {
-                self.__TASK_HELP_CMD: _help,
-                self.__TASK_CLEAN_CMD: _clean,
-                self.__TASK_LIST_CMD: _task_list,
-                self.__TASK_DELETE_CMD: _delete_task,
-                self.__TASK_TEST_CMD: _test_convert,
-            }
-        }
-
-        self._cmd_client.register(tree, True)
+        su_perm = Permission(id=PermissionCode.SuperPermission.value, name=self.get_plugin_name())
+        req_perm: RequiredPermission = required_perm_generator(
+            target_resource_name=self.get_plugin_name(), super_permissions=[su_perm]
+        )
+        tree = NameSpaceNode(
+            name=self.__TASK_CMD,
+            required_permissions=req_perm,
+            help_message=self.get_plugin_description(),
+            children_node=[
+                ExecutableNode(
+                    name=self.__TASK_HELP_CMD,
+                    source=_help,
+                    help_message=_help.__doc__,
+                ),
+                ExecutableNode(
+                    name=self.__TASK_CLEAN_CMD,
+                    source=_clean,
+                    help_message=_clean.__doc__,
+                ),
+                ExecutableNode(
+                    name=self.__TASK_LIST_CMD,
+                    source=_task_list,
+                    help_message=_task_list.__doc__,
+                ),
+                ExecutableNode(
+                    name=self.__TASK_DELETE_CMD,
+                    source=_delete_task,
+                    help_message=_delete_task.__doc__,
+                ),
+                ExecutableNode(
+                    name=self.__TASK_TEST_CMD,
+                    source=_test_convert,
+                    help_message=_test_convert.__doc__,
+                ),
+            ],
+        )
+        self._auth_manager.add_perm_from_req(req_perm)
+        self._root_namespace_node.add_node(tree)
 
         @self.receiver(GroupMessage)
         async def pin_operator(app: Ariadne, group: Group, message: GroupMessage):

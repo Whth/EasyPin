@@ -8,15 +8,17 @@ from modules.plugin_base import AbstractPlugin
 __all__ = ["EasyPin"]
 
 
-class EasyPin(AbstractPlugin):
-    __TASK_CMD = "task"
-    __TASK_SET_CMD = "new"
-    __TASK_LIST_CMD = "list"
-    __TASK_DELETE_CMD = "delete"
-    __TASK_CLEAN_CMD = "clean"
-    __TASK_TEST_CMD = "abd"
-    __TASK_HELP_CMD = "help"
+class CMD(object):
+    TASK = "task"
+    TASK_SET = "new"
+    TASK_LIST = "list"
+    TASK_DELETE = "delete"
+    TASK_CLEAN = "clean"
+    TASK_TEST = "test"
+    TASK_HELP = "help"
 
+
+class EasyPin(AbstractPlugin):
     CONFIG_TASKS_SAVE_PATH = "tasks_save_path"
 
     def _get_config_parent_dir(self) -> str:
@@ -85,13 +87,21 @@ class EasyPin(AbstractPlugin):
             :rtype: str
             """
             cmds = [
-                self.__TASK_SET_CMD,
-                self.__TASK_LIST_CMD,
-                self.__TASK_DELETE_CMD,
-                self.__TASK_TEST_CMD,
-                self.__TASK_HELP_CMD,
+                CMD.TASK_SET,
+                CMD.TASK_LIST,
+                CMD.TASK_DELETE,
+                CMD.TASK_CLEAN,
+                CMD.TASK_TEST,
+                CMD.TASK_HELP,
             ]
-            help_strings = ["用于设置任务，第一个参数为执行时间，第二个参数为任务名称，任务内容由引用的消息决定", "列举出所有的定时任务", "删除指定的任务", "时间字符串解释测试", "展示这条信息"]
+            help_strings = [
+                "用于设置任务，第一个参数为执行时间，第二个参数为任务名称，任务内容由引用的消息决定",
+                "列举出所有的定时任务",
+                "删除指定的任务",
+                "删除所有任务",
+                "时间字符串解释测试",
+                "展示这条信息",
+            ]
             stdout = "\n\n".join(f"{cmd} {help_string}" for cmd, help_string in zip(cmds, help_strings))
             return stdout
 
@@ -103,14 +113,16 @@ class EasyPin(AbstractPlugin):
                 str: A string containing the task list, where each task is represented by its name and crontab schedule.
             """
             task_registry.remove_outdated_tasks()
-            temp_string = "Task List:\n"
-            for crontab, tasks in task_registry.tasks.items():
-                for name, _task in tasks.items():
-                    _task: T_TASK
-                    temp_string += f"{_task.task_name} | {_task.crontab}\n"
-            return temp_string
+            task_list = []
 
-        def _clean() -> str:
+            for tasks in task_registry.tasks.values():
+                for _task in tasks.values():
+                    _task: T_TASK
+                    task_list.append(f"{_task.task_name} | {_task.crontab}")
+
+            return "Task List:\n" + "\n".join(task_list)
+
+        def _clear() -> str:
             """
             Cleans all scheduled tasks and removes them from the task registry.
 
@@ -168,32 +180,32 @@ class EasyPin(AbstractPlugin):
             target_resource_name=self.get_plugin_name(), super_permissions=[su_perm]
         )
         tree = NameSpaceNode(
-            name=self.__TASK_CMD,
+            name=CMD.TASK,
             required_permissions=req_perm,
             help_message=self.get_plugin_description(),
             children_node=[
                 ExecutableNode(
-                    name=self.__TASK_HELP_CMD,
+                    name=CMD.TASK_HELP,
                     source=_help,
                     help_message=_help.__doc__,
                 ),
                 ExecutableNode(
-                    name=self.__TASK_CLEAN_CMD,
-                    source=_clean,
-                    help_message=_clean.__doc__,
+                    name=CMD.TASK_CLEAN,
+                    source=_clear,
+                    help_message=_clear.__doc__,
                 ),
                 ExecutableNode(
-                    name=self.__TASK_LIST_CMD,
+                    name=CMD.TASK_LIST,
                     source=_task_list,
                     help_message=_task_list.__doc__,
                 ),
                 ExecutableNode(
-                    name=self.__TASK_DELETE_CMD,
+                    name=CMD.TASK_DELETE,
                     source=_delete_task,
                     help_message=_delete_task.__doc__,
                 ),
                 ExecutableNode(
-                    name=self.__TASK_TEST_CMD,
+                    name=CMD.TASK_TEST,
                     source=_test_convert,
                     help_message=_test_convert.__doc__,
                 ),
@@ -205,11 +217,12 @@ class EasyPin(AbstractPlugin):
         @self.receiver(GroupMessage)
         async def pin_operator(app: Ariadne, group: Group, message: GroupMessage):
             """
-            Asynchronous pin operator function that receives a GroupMessage object and performs various operations based on the command and arguments provided.
+            A decorator function that receives a `GroupMessage` object and handles pinning a message as a task.
 
             Args:
-                group (Group): The Group object representing the group where the message was sent.
-                message (GroupMessage): The GroupMessage object representing the message received.
+                app (Ariadne): The Ariadne application instance.
+                group (Group): The group where the message was sent.
+                message (GroupMessage): The message to be pinned as a task.
 
             Returns:
                 None
@@ -218,7 +231,7 @@ class EasyPin(AbstractPlugin):
                 None
             """
             # Define the pattern for matching the command and arguments
-            pat = rf"{self.__TASK_CMD}\s+{self.__TASK_SET_CMD}\s+(\S+)(?:\s+(.+)|(?:\s+)?$)"
+            pat = rf"{CMD.TASK}\s+{CMD.TASK_SET}\s+(\S+)(?:\s+(.+)|(?:\s+)?$)"
 
             # Check if the message has an origin attribute
             if not hasattr(message.quote, "origin"):

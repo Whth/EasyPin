@@ -1,4 +1,5 @@
 import os
+import pathlib
 import re
 from typing import List, Callable
 
@@ -39,7 +40,7 @@ class EasyPin(AbstractPlugin):
 
     def __register_all_config(self):
         self._config_registry.register_config(
-            self.CONFIG_TASKS_SAVE_PATH, f"{self._get_config_parent_dir()}/cache/tasks.json"
+            self.CONFIG_TASKS_SAVE_PATH, str(pathlib.Path(f"{self._get_config_parent_dir()}/cache/tasks.json"))
         )
 
     def install(self):
@@ -221,7 +222,6 @@ class EasyPin(AbstractPlugin):
 
             # Check if the message has an origin attribute
             if not hasattr(message.quote, "origin"):
-                print("no origin, not accepted")
                 return
 
             # Compile the regular expression pattern

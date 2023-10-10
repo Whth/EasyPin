@@ -3,13 +3,12 @@ import json
 import pathlib
 import warnings
 from abc import abstractmethod
-from typing import List, Any, Dict, TypeVar, Type, final, Optional, Callable
-
 from colorama import Fore
 from graia.ariadne import Ariadne
 from graia.ariadne.event.message import MessageEvent
 from graia.ariadne.message.element import Forward, ForwardNode, Face
 from graia.ariadne.model import Profile
+from typing import List, Any, Dict, TypeVar, Type, final, Optional, Callable
 
 from .analyze import is_crontab_expired
 
@@ -231,6 +230,8 @@ class TaskRegistry(object):
         Returns:
             None
         """
+        if not pathlib.Path(self._save_path).exists():
+            return
         with open(self._save_path, "r") as f:
             temp_dict: Dict[str, Dict[str, Dict[str, Any]]] = json.load(f)
         for crontab, tasks in temp_dict.items():
@@ -253,6 +254,7 @@ class TaskRegistry(object):
             None
         """
         print(f"{Fore.MAGENTA}Saving tasks to {self._save_path}")
+        pathlib.Path(self._save_path).parent.mkdir(parents=True, exist_ok=True)
         temp_dict: Dict[str, Dict[str, Dict[str, Any]]] = {}
         for crontab, tasks in self._tasks.items():
             temp_dict[crontab] = {}

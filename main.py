@@ -217,11 +217,12 @@ class EasyPin(AbstractPlugin):
         @self.receiver(GroupMessage)
         async def pin_operator(app: Ariadne, group: Group, message: GroupMessage):
             """
-            Asynchronous pin operator function that receives a GroupMessage object and performs various operations based on the command and arguments provided.
+            A decorator function that receives a `GroupMessage` object and handles pinning a message as a task.
 
             Args:
-                group (Group): The Group object representing the group where the message was sent.
-                message (GroupMessage): The GroupMessage object representing the message received.
+                app (Ariadne): The Ariadne application instance.
+                group (Group): The group where the message was sent.
+                message (GroupMessage): The message to be pinned as a task.
 
             Returns:
                 None

@@ -1,8 +1,8 @@
 import os
-import pathlib
 import re
 from typing import List, Callable
 
+from modules.file_manager import get_pwd
 from modules.plugin_base import AbstractPlugin
 
 __all__ = ["EasyPin"]
@@ -21,7 +21,12 @@ class CMD(object):
 class EasyPin(AbstractPlugin):
     CONFIG_TASKS_SAVE_PATH = "tasks_save_path"
 
-    def _get_config_parent_dir(self) -> str:
+    DefaultConfig = {
+        CONFIG_TASKS_SAVE_PATH: f"{get_pwd()}/cache/tasks.json",
+    }
+
+    @classmethod
+    def _get_config_dir(cls) -> str:
         return os.path.abspath(os.path.dirname(__file__))
 
     @classmethod
@@ -40,11 +45,6 @@ class EasyPin(AbstractPlugin):
     def get_plugin_author(cls) -> str:
         return "whth"
 
-    def __register_all_config(self):
-        self._config_registry.register_config(
-            self.CONFIG_TASKS_SAVE_PATH, str(pathlib.Path(f"{self._get_config_parent_dir()}/cache/tasks.json"))
-        )
-
     def install(self):
         from graia.scheduler import GraiaScheduler
         from graia.scheduler.timers import crontabify
@@ -57,9 +57,6 @@ class EasyPin(AbstractPlugin):
         from graia.ariadne.model import Group
         from .analyze import Preprocessor, DEFAULT_PRESET, TO_DATETIME_PRESET, DATETIME_TO_CRONTAB_PRESET
         from .task import TaskRegistry, ReminderTask, T_TASK
-
-        self.__register_all_config()
-        self._config_registry.load_config()
 
         scheduler: GraiaScheduler = Ariadne.current().create(GraiaScheduler)
         to_datetime_processor = Preprocessor(TO_DATETIME_PRESET)
@@ -292,10 +289,12 @@ class EasyPin(AbstractPlugin):
             print(f"{Fore.YELLOW}------------------------------\nFetching tasks:{Fore.RESET}")
 
             # Iterate over each task in the task list
-            for task in task_registry.task_list:
-                print(f"{Fore.MAGENTA}Retrieve Task {task.crontab}|{task.task_name} ")
+            for retrieved_task in task_registry.task_list:
+                print(f"{Fore.MAGENTA}Retrieve Task {retrieved_task.crontab}|{retrieved_task.task_name} ")
                 # Schedule the task using the scheduler
-                scheduler.schedule(crontabify(task.crontab), cancelable=True)(await task.make(Ariadne.current()))
+                scheduler.schedule(crontabify(retrieved_task.crontab), cancelable=True)(
+                    await retrieved_task.make(Ariadne.current())
+                )
 
             print(
                 f"{Fore.YELLOW}Fetched {len(scheduler.schedule_tasks)} tasks\n"

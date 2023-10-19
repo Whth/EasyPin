@@ -39,7 +39,7 @@ class EasyPin(AbstractPlugin):
 
     @classmethod
     def get_plugin_version(cls) -> str:
-        return "0.0.3"
+        return "0.0.4"
 
     @classmethod
     def get_plugin_author(cls) -> str:
@@ -255,24 +255,20 @@ class EasyPin(AbstractPlugin):
             crontab = full_processor.process(match_groups[0], True) + " 0"
 
             # Create a new ReminderTask object
-            task = ReminderTask(
+            rem_task = ReminderTask(
                 crontab=crontab,
                 remind_content=[origin_id],
                 target=group.id,
                 task_name=match_groups[1] if match_groups[1] else None,
             )
 
-            # Register the task in the task registry
-            task_registry.register_task(task=task)
-
-            # Save the tasks in the task registry
-            task_registry.save_tasks()
-
             # Send a message to the group with the details of the scheduled task
-            await app.send_message(group, f"Schedule new task:\n {task.task_name} | {crontab}")
+            await app.send_message(group, f"Schedule new task:\n {rem_task.task_name} | {crontab}")
 
             # Schedule the task using the scheduler
-            scheduler.schedule(crontabify(crontab), cancelable=True)(await task.make(app))
+            scheduler.schedule(crontabify(crontab), cancelable=True)(await rem_task.make(app))
+            # Register the task in the task registry
+            task_registry.register_task(task=rem_task)
 
             # Run the last scheduled task
             await scheduler.schedule_tasks[-1].run()

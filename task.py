@@ -3,12 +3,14 @@ import json
 import pathlib
 import warnings
 from abc import abstractmethod
+from typing import List, Any, Dict, TypeVar, Type, final, Optional, Callable
+
 from colorama import Fore
 from graia.ariadne import Ariadne
 from graia.ariadne.event.message import MessageEvent
+from graia.ariadne.message.chain import MessageChain
 from graia.ariadne.message.element import Forward, ForwardNode, Face
 from graia.ariadne.model import Profile
-from typing import List, Any, Dict, TypeVar, Type, final, Optional, Callable
 
 from .analyze import is_crontab_expired
 
@@ -76,13 +78,33 @@ class ReminderTask(Task):
             Return a dictionary representation of the ReminderTask.
     """
 
-    def __init__(self, crontab: str, remind_content: List[int], target: int, task_name: Optional[str] = None):
+    def __init__(
+        self,
+        crontab: str,
+        remind_content: List[int] | List[str],
+        target: int,
+        task_name: Optional[str] = None,
+        app: Optional[Ariadne] = None,
+    ):
         if task_name is None:
             time_stamp = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
             task_name = f"{self.__class__.__name__}-{time_stamp}"
         super().__init__(task_name, crontab)
-        self.remind_content: List[int] = remind_content
         self.target: int = target
+        self._content_id_list: Optional[List[int]] = None
+        if all(isinstance(item, int) for item in remind_content):
+            self._content_id_list = remind_content
+        elif all(isinstance(item, str) for item in remind_content):
+            self.remind_content: List[str] = remind_content
+        else:
+            raise ValueError("remind_content must be a list of int or a list of str.")
+
+    async def retrieve_task_data(self, app: Ariadne, content_id_list: List[int]) -> List[str]:
+        temp: List[str] = []
+        for msg_id in content_id_list:
+            msg_event: MessageEvent = await app.get_message_from_id(msg_id, self.target)
+            temp.append(msg_event.message_chain.as_persistent_string())
+        return temp
 
     async def make(self, app: Ariadne) -> Callable:
         """
@@ -97,21 +119,21 @@ class ReminderTask(Task):
         if callable(self._task_func):
             warnings.warn("Task is already made")
             return self._task_func
-        from graia.ariadne.message.chain import MessageChain
-
+        if self._content_id_list:
+            self.remind_content: List[str] = await self.retrieve_task_data(app, self._content_id_list)
         nodes = []
-        for msg_id in self.remind_content:
-            msg_event: MessageEvent = await app.get_message_from_id(msg_id, self.target)
+        profile: Profile = await app.get_bot_profile()
+        for per_string in self.remind_content:
+            chain = MessageChain.from_persistent_string(per_string)
 
             nodes.append(
                 ForwardNode(
-                    msg_event.sender.id,
+                    app.account,
                     time=datetime.datetime.now(),
-                    message=msg_event.message_chain,
-                    name=msg_event.sender.name,
+                    message=chain,
+                    name=profile.nickname,
                 )
             )
-        profile: Profile = await app.get_bot_profile()
         nodes.append(
             ForwardNode(
                 app.account,
@@ -181,12 +203,13 @@ class TaskRegistry(object):
                 task_list.append(task)
         return task_list
 
-    def register_task(self, task: T_TASK):
+    def register_task(self, task: T_TASK, with_save: bool = True) -> None:
         """
-        Registers a task in the task manager.
+        Register a task in the task manager.
 
         Args:
             task (T_TASK): The task to register.
+            with_save (bool, optional): Whether to save the tasks. Defaults to True.
 
         Raises:
             TypeError: If the task is not of the correct type.
@@ -200,6 +223,7 @@ class TaskRegistry(object):
             self._tasks[task.crontab][task.task_name] = task
         else:
             self._tasks[task.crontab] = {task.task_name: task}
+        self.save_tasks() if with_save else None
 
     def remove_outdated_tasks(self):
         """

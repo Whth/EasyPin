@@ -281,19 +281,21 @@ class EasyPin(AbstractPlugin):
 
             from colorama import Fore
 
+            stdout = ""
             # Print a message indicating that tasks are being fetched
-            print(f"{Fore.YELLOW}------------------------------\nFetching tasks:{Fore.RESET}")
+            stdout += f"{Fore.YELLOW}------------------------------\nFetching tasks:{Fore.RESET}\n"
 
             # Iterate over each task in the task list
             for retrieved_task in task_registry.task_list:
-                print(f"{Fore.MAGENTA}Retrieve Task {retrieved_task.crontab}|{retrieved_task.task_name} ")
+                stdout += f"{Fore.MAGENTA}Retrieve Task {retrieved_task.crontab}|{retrieved_task.task_name}\n"
                 # Schedule the task using the scheduler
                 scheduler.schedule(crontabify(retrieved_task.crontab), cancelable=True)(
                     await retrieved_task.make(Ariadne.current())
                 )
 
-            print(
+            stdout += (
                 f"{Fore.YELLOW}Fetched {len(scheduler.schedule_tasks)} tasks\n"
                 f"------------------------------\n{Fore.RESET}"
             )
+            print(stdout)
             await scheduler.run()

@@ -12,7 +12,7 @@ class CMD(object):
     TASK = "task"
     TASK_SET = "new"
     TASK_LIST = "list"
-    TASK_DELETE = "delete"
+    TASK_DELETE = "del"
     TASK_CLEAN = "clean"
     TASK_TEST = "test"
     TASK_HELP = "help"
@@ -39,7 +39,7 @@ class EasyPin(AbstractPlugin):
 
     @classmethod
     def get_plugin_version(cls) -> str:
-        return "0.0.4"
+        return "0.0.5"
 
     @classmethod
     def get_plugin_author(cls) -> str:

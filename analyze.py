@@ -5,9 +5,6 @@ from typing import Callable, List, Optional, Sequence, Any, Union
 
 from colorama import Fore
 
-full_pattern = re.compile(r"^((\d+)月(\d+)[天日]|(\d+)\.(\d+))?(\d+)[点时.:：](\d+)?分?$")
-
-
 Procedure = Callable[[str], str]
 
 
@@ -159,7 +156,7 @@ def convert_brief_time_to_num(string: str) -> str:
     min_reg = "|".join(min_map.keys())
     hour_reg = "|".join(hour_names)
     reg_exp = rf"(?:(?:{hour_reg})({min_reg})|(?:{hour_reg})(?:\s|$))"
-    print(reg_exp)
+
     matches = re.findall(pattern=reg_exp, string=string)
     if not matches:
         return string
@@ -494,7 +491,7 @@ def convert_relative_weekday_to_absolute(string: str) -> str:
     )
 
 
-def convert_to_crontab(string) -> str | None:
+def convert_date_to_crontab(string: str) -> str | None:
     """
     Convert a string representation of a cron expression into a crontab format.
 
@@ -504,18 +501,17 @@ def convert_to_crontab(string) -> str | None:
     Returns:
         str | None: The converted crontab format string, or None if the input string does not match the expected pattern.
     """
-    match = re.match(full_pattern, string)
+
+    full_chinese_date_pattern = re.compile(r"^(?:(\d+)月)?(?:(\d+)[天日])?(?:(\d+)[点时:：.])?(\d+)?分?$")
+
+    match = full_chinese_date_pattern.match(string)
 
     if match:
-        month = match.group(2)
-        day = match.group(3)
-        hour = match.group(6)
-        minute = match.group(7)
-
-        minute = minute or datetime.now().minute
-        hour = hour or datetime.now().hour
-        day = day or datetime.now().day
-        month = month or datetime.now().month
+        now = datetime.now()
+        month = match.group(1) or now.month
+        day = match.group(2) or now.day
+        hour = match.group(3) or now.hour
+        minute = match.group(4) or now.minute
 
         return f"{minute} {hour} {day} {month} *"
     else:
@@ -532,6 +528,7 @@ def normalize_crontab(crontab_string: str | None) -> str | None:
     """
     if not crontab_string:
         return
+
     parts = crontab_string.split()
 
     # 规范化分钟部分
@@ -551,12 +548,12 @@ TO_DATETIME_PRESET = [
     convert_relative_weekday_to_absolute,
     replace_chinese_numbers,
     convert_relative_to_abs,
+    convert_day_period_to_abs_time,
     convert_relative_day_to_abs,
     convert_relative_month_to_abs,
-    convert_day_period_to_abs_time,
 ]
 DATETIME_TO_CRONTAB_PRESET = [
-    convert_to_crontab,
+    convert_date_to_crontab,
     normalize_crontab,
 ]
 DEFAULT_PRESET = TO_DATETIME_PRESET + DATETIME_TO_CRONTAB_PRESET
@@ -572,6 +569,7 @@ def is_crontab_expired(crontab_string: str) -> bool:
     Returns:
         bool: True if the crontab schedule has not expired, False otherwise.
     """
+
     now = datetime.now()
 
     # split the crontab string into its individual components
@@ -608,6 +606,7 @@ if __name__ == "__main__":
         "这个星期三下午8点",
         "今天17点",
         "晚上",
+        "周六",
     ]
     shall_not_pass_tests = ["今年八月16日的阿纳", "之后的三天"]
 

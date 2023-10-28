@@ -1,6 +1,9 @@
 import os
 import re
-from typing import List, Callable
+from typing import List, Callable, Union
+
+from graia.ariadne.event.message import FriendMessage
+from graia.ariadne.model import Friend
 
 from modules.file_manager import get_pwd
 from modules.plugin_base import AbstractPlugin
@@ -60,7 +63,7 @@ class EasyPin(AbstractPlugin):
 
         scheduler: GraiaScheduler = Ariadne.current().create(GraiaScheduler)
         to_datetime_processor = Preprocessor(TO_DATETIME_PRESET)
-        datetime_to_crontab_processor = Preprocessor(DATETIME_TO_CRONTAB_PRESET)
+
         full_processor = Preprocessor(DEFAULT_PRESET)
         task_registry = TaskRegistry(self._config_registry.get_config(self.CONFIG_TASKS_SAVE_PATH), ReminderTask)
 
@@ -83,23 +86,16 @@ class EasyPin(AbstractPlugin):
             :return: A string containing help information for the available commands.
             :rtype: str
             """
-            cmds = [
-                CMD.TASK_SET,
-                CMD.TASK_LIST,
-                CMD.TASK_DELETE,
-                CMD.TASK_CLEAN,
-                CMD.TASK_TEST,
-                CMD.TASK_HELP,
-            ]
-            help_strings = [
-                "用于设置任务，第一个参数为执行时间，第二个参数为任务名称，任务内容由引用的消息决定",
-                "列举出所有的定时任务",
-                "删除指定的任务",
-                "删除所有任务",
-                "时间字符串解释测试",
-                "展示这条信息",
-            ]
-            stdout = "\n\n".join(f"{cmd} {help_string}" for cmd, help_string in zip(cmds, help_strings))
+            cmds = {
+                CMD.TASK_SET: "用于设置任务，第一个参数为执行时间，第二个参数为任务名称，任务内容由引用的消息决定",
+                CMD.TASK_LIST: "列出所有的定时任务",
+                CMD.TASK_DELETE: "删除指定的任务",
+                CMD.TASK_CLEAN: "删除所有任务",
+                CMD.TASK_TEST: "时间字符串解释测试",
+                CMD.TASK_HELP: "展示这条信息",
+            }
+
+            stdout = "\n\n".join(f"{cmd} {help_string}" for cmd, help_string in cmds.items())
             return stdout
 
         def _task_list() -> str:
@@ -211,14 +207,14 @@ class EasyPin(AbstractPlugin):
         self._auth_manager.add_perm_from_req(req_perm)
         self._root_namespace_node.add_node(tree)
 
-        @self.receiver(GroupMessage)
-        async def pin_operator(app: Ariadne, group: Group, message: GroupMessage):
+        @self.receiver([FriendMessage, GroupMessage])
+        async def pin_operator(app: Ariadne, target: Union[Friend, Group], message: Union[FriendMessage, GroupMessage]):
             """
             A decorator function that receives a `GroupMessage` object and handles pinning a message as a task.
 
             Args:
                 app (Ariadne): The Ariadne application instance.
-                group (Group): The group where the message was sent.
+                target (Group): The group where the message was sent.
                 message (GroupMessage): The message to be pinned as a task.
 
             Returns:
@@ -228,17 +224,15 @@ class EasyPin(AbstractPlugin):
                 None
             """
             # Define the pattern for matching the command and arguments
-            pat = rf"{CMD.TASK}\s+{CMD.TASK_SET}\s+(\S+)(?:\s+(.+)|(?:\s+)?$)"
-
             # Check if the message has an origin attribute
-            if not hasattr(message.quote, "origin"):
+            if message.quote is None:
                 return
 
             # Compile the regular expression pattern
-            comp = re.compile(pat)
+            comp = re.compile(rf"{CMD.TASK}\s+{CMD.TASK_SET}\s+(\S+)(?:\s+(.+)|(?:\s+)?$)")
 
             # Find all matches of the pattern in the message
-            matches = re.findall(comp, str(message.message_chain))
+            matches = comp.findall(str(message.message_chain))
 
             # If no matches are found, return
             if not matches:
@@ -258,12 +252,12 @@ class EasyPin(AbstractPlugin):
             rem_task = ReminderTask(
                 crontab=crontab,
                 remind_content=[origin_id],
-                target=group.id,
+                target=target.id,
                 task_name=match_groups[1] if match_groups[1] else None,
             )
 
             # Send a message to the group with the details of the scheduled task
-            await app.send_message(group, f"Schedule new task:\n {rem_task.task_name} | {crontab}")
+            await app.send_message(target, f"Schedule new task:\n {rem_task.task_name} | {crontab}")
 
             # Schedule the task using the scheduler
             scheduler.schedule(crontabify(crontab), cancelable=True)(await rem_task.make(app))

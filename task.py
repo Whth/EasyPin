@@ -84,7 +84,6 @@ class ReminderTask(Task):
         remind_content: List[int] | List[str],
         target: int,
         task_name: Optional[str] = None,
-        app: Optional[Ariadne] = None,
     ):
         if task_name is None:
             time_stamp = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")

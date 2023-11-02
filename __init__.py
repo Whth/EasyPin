@@ -1,4 +1,3 @@
-import os
 import re
 from typing import List, Callable, Union
 
@@ -19,6 +18,7 @@ class CMD(object):
     TASK_CLEAN = "clean"
     TASK_TEST = "test"
     TASK_HELP = "help"
+    TASK_INFO = "info"
 
 
 class EasyPin(AbstractPlugin):
@@ -27,10 +27,6 @@ class EasyPin(AbstractPlugin):
     DefaultConfig = {
         CONFIG_TASKS_SAVE_PATH: f"{get_pwd()}/cache/tasks.json",
     }
-
-    @classmethod
-    def _get_config_dir(cls) -> str:
-        return os.path.abspath(os.path.dirname(__file__))
 
     @classmethod
     def get_plugin_name(cls) -> str:
@@ -42,7 +38,7 @@ class EasyPin(AbstractPlugin):
 
     @classmethod
     def get_plugin_version(cls) -> str:
-        return "0.0.5"
+        return "0.0.6"
 
     @classmethod
     def get_plugin_author(cls) -> str:
@@ -168,6 +164,23 @@ class EasyPin(AbstractPlugin):
             # Return a deletion message
             return f"Delete {len(tasks_to_delete)} Tasks"
 
+        async def _task_content(task_name: str) -> str:
+            """
+            A function that gets the content of a task based on its name.
+
+            Parameters:
+                task_name (str): The name of the task.
+
+            Returns:
+                str: The content of the task if a match is found, otherwise "No Task Matched".
+            """
+            query = filter(lambda _task: _task.task_name == task_name, task_registry.task_list)
+            if query:
+                task_instance: T_TASK = list(query)[0]
+                await task_instance.task_func()
+                return f"Found {task_name}\n{task_instance.crontab}"
+            return "No Task Matched"
+
         su_perm = Permission(id=PermissionCode.SuperPermission.value, name=self.get_plugin_name())
         req_perm: RequiredPermission = required_perm_generator(
             target_resource_name=self.get_plugin_name(), super_permissions=[su_perm]
@@ -177,6 +190,11 @@ class EasyPin(AbstractPlugin):
             required_permissions=req_perm,
             help_message=self.get_plugin_description(),
             children_node=[
+                ExecutableNode(
+                    name=CMD.TASK_INFO,
+                    help_message=_task_content.__doc__,
+                    source=_task_content,
+                ),
                 ExecutableNode(
                     name=CMD.TASK_HELP,
                     source=_help,

@@ -276,27 +276,49 @@ class EasyPin(AbstractPlugin):
 
             # Process the match group and add "0" at the end
             crontab = full_processor.process(match_groups[0], True) + " 0"
-            title = None
+            title = match_groups[1]
             extra = ExtraPayload()
             if code_talker:
-                summery = "总结：\n" + code_talker.chat(f"总结下面这一段话（分点概述）：\n{message.quote.origin}")
-                title = "标题：\n" + code_talker.chat(f"给下面这一段话取一个没有标点符号的简短的标题（10字以内）：\n{message.quote.origin}")
+                summary = code_talker.chat(f"给出下面段话内容的分点总结：\n{message.quote.origin}")
+                extra.messages.append("总结：\n" + summary) if summary else None
 
-                extra.messages.append(summery)
+                if not title:
+                    title = code_talker.chat(f"给下面这段话一个简短的标题（16字以内）：\n{message.quote.origin}")
+
+                print(f"Grant summary: {summary}")
+                print(f"Grant title: {title}")
             if pic_eval and sd_dev:
-                porn_words = ["nipples", "pussy", "censor", "sex", "nsfw", "nake", "nudity"]
-                for _ in range(2):
+                porn_words = [
+                    "nipples",
+                    "pussy",
+                    "censored",
+                    "sex",
+                    "nsfw",
+                    "nude",
+                    "navel",
+                    "bikini",
+                    "panties",
+                    "covered navel",
+                    "cleavage",
+                    "leotard",
+                ]
+                for i in range(7):
+                    print(f"roll for pic-{i}")
                     rand_pic: str = pic_eval.rand_pic()
                     tags: Dict[str, float] = await sd_dev.interrogate(rand_pic)
                     if any(porn_word in tags for porn_word in porn_words):
                         continue
-                    extra.images.append(pathlib.Path(rand_pic))
+                    break
+                else:
+                    rand_pic = ""
+                extra.images.append(pathlib.Path(rand_pic)) if rand_pic else None
+
             # Create a new ReminderTask object
             rem_task = ReminderTask(
                 crontab=crontab,
                 remind_content=[origin_id],
                 target=target.id,
-                task_name=match_groups[1] if match_groups[1] else title,
+                task_name=title,
                 extra=extra,
             )
 

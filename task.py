@@ -93,7 +93,7 @@ class ReminderTask(Task):
         task_name: Optional[str] = None,
         extra: Optional[ExtraPayload] = None,
     ):
-        if task_name is None:
+        if not task_name:
             time_stamp = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
             task_name = f"{self.__class__.__name__}-{time_stamp}"
         super().__init__(task_name, crontab)
@@ -300,7 +300,7 @@ class TaskRegistry(object):
         """
         if not pathlib.Path(self._save_path).exists():
             return
-        with open(self._save_path, "r") as f:
+        with open(self._save_path, "r", encoding="utf-8") as f:
             temp_dict: Dict[str, Dict[str, Dict[str, Any]]] = json.load(f)
         for crontab, tasks in temp_dict.items():
             self._tasks[crontab] = {}
@@ -329,7 +329,7 @@ class TaskRegistry(object):
             for task_name, task in tasks.items():
                 task: T_TASK
                 temp_dict[crontab][task_name] = task.as_dict()
-        with open(self._save_path, "w") as f:
+        with open(self._save_path, "w", encoding="utf-8") as f:
             json.dump(temp_dict, f, ensure_ascii=False, indent=2)
 
     def remove_all_task(self):

@@ -1,11 +1,12 @@
+import pathlib
 import re
-from typing import List, Callable, Union
+from typing import List, Callable, Union, Dict
 
 from graia.ariadne.event.message import FriendMessage
 from graia.ariadne.model import Friend
 
-from modules.file_manager import get_pwd
-from modules.plugin_base import AbstractPlugin
+from modules.shared import get_pwd, AbstractPlugin
+from .task import ExtraPayload
 
 __all__ = ["EasyPin"]
 
@@ -19,6 +20,12 @@ class CMD(object):
     TASK_TEST = "test"
     TASK_HELP = "help"
     TASK_INFO = "info"
+
+
+class External(object):
+    SD_DEV = "StableDiffusionDev"
+    CodeTalker = "CodeTalker"
+    PicEval = "PicEval"
 
 
 class EasyPin(AbstractPlugin):
@@ -38,7 +45,7 @@ class EasyPin(AbstractPlugin):
 
     @classmethod
     def get_plugin_version(cls) -> str:
-        return "0.0.6"
+        return "0.0.7"
 
     @classmethod
     def get_plugin_author(cls) -> str:
@@ -225,6 +232,10 @@ class EasyPin(AbstractPlugin):
         self._auth_manager.add_perm_from_req(req_perm)
         self._root_namespace_node.add_node(tree)
 
+        sd_dev = self.plugin_view.get(External.SD_DEV, None)
+        code_talker = self.plugin_view.get(External.CodeTalker, None)
+        pic_eval = self.plugin_view.get(External.PicEval, None)
+
         @self.receiver([FriendMessage, GroupMessage])
         async def pin_operator(app: Ariadne, target: Union[Friend, Group], message: Union[FriendMessage, GroupMessage]):
             """
@@ -265,13 +276,28 @@ class EasyPin(AbstractPlugin):
 
             # Process the match group and add "0" at the end
             crontab = full_processor.process(match_groups[0], True) + " 0"
+            title = None
+            extra = ExtraPayload()
+            if code_talker:
+                summery = "总结：\n" + code_talker.chat(f"总结下面这一段话（分点概述）：\n{message.quote.origin}")
+                title = "标题：\n" + code_talker.chat(f"给下面这一段话取一个没有标点符号的简短的标题（10字以内）：\n{message.quote.origin}")
 
+                extra.messages.append(summery)
+            if pic_eval and sd_dev:
+                porn_words = ["nipples", "pussy", "censor", "sex", "nsfw", "nake", "nudity"]
+                for _ in range(2):
+                    rand_pic: str = pic_eval.rand_pic()
+                    tags: Dict[str, float] = await sd_dev.interrogate(rand_pic)
+                    if any(porn_word in tags for porn_word in porn_words):
+                        continue
+                    extra.images.append(pathlib.Path(rand_pic))
             # Create a new ReminderTask object
             rem_task = ReminderTask(
                 crontab=crontab,
                 remind_content=[origin_id],
                 target=target.id,
-                task_name=match_groups[1] if match_groups[1] else None,
+                task_name=match_groups[1] if match_groups[1] else title,
+                extra=extra,
             )
 
             # Send a message to the group with the details of the scheduled task

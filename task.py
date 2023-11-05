@@ -9,10 +9,17 @@ from colorama import Fore
 from graia.ariadne import Ariadne
 from graia.ariadne.event.message import MessageEvent
 from graia.ariadne.message.chain import MessageChain
-from graia.ariadne.message.element import Forward, ForwardNode, Face
+from graia.ariadne.message.element import Forward, ForwardNode, Face, Image
 from graia.ariadne.model import Profile
+from pydantic import BaseModel, FilePath
 
 from .analyze import is_crontab_expired
+
+
+class ExtraPayload(BaseModel):
+    messages: List[str] = []
+    images: List[FilePath] = []
+    chains: List[MessageChain] = []
 
 
 class Task:
@@ -84,6 +91,7 @@ class ReminderTask(Task):
         remind_content: List[int] | List[str],
         target: int,
         task_name: Optional[str] = None,
+        extra: Optional[ExtraPayload] = None,
     ):
         if task_name is None:
             time_stamp = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
@@ -97,6 +105,7 @@ class ReminderTask(Task):
             self.remind_content: List[str] = remind_content
         else:
             raise ValueError("remind_content must be a list of int or a list of str.")
+        self.extra: ExtraPayload = extra
 
     async def retrieve_task_data(self, app: Ariadne, content_id_list: List[int]) -> List[str]:
         temp: List[str] = []
@@ -120,8 +129,12 @@ class ReminderTask(Task):
             return self._task_func
         if self._content_id_list:
             self.remind_content: List[str] = await self.retrieve_task_data(app, self._content_id_list)
-        nodes = []
         profile: Profile = await app.get_bot_profile()
+        nodes = [
+            ForwardNode(
+                app.account, time=datetime.datetime.now(), message=MessageChain(self.task_name), name=profile.nickname
+            )
+        ]
         for per_string in self.remind_content:
             chain = MessageChain.from_persistent_string(per_string)
 
@@ -133,6 +146,35 @@ class ReminderTask(Task):
                     name=profile.nickname,
                 )
             )
+        if self.extra:
+            for chain in self.extra.chains:
+                nodes.append(
+                    ForwardNode(
+                        app.account,
+                        time=datetime.datetime.now(),
+                        message=chain,
+                        name=profile.nickname,
+                    )
+                )
+            for message in self.extra.messages:
+                nodes.append(
+                    ForwardNode(
+                        app.account,
+                        time=datetime.datetime.now(),
+                        message=MessageChain(message),
+                        name=profile.nickname,
+                    )
+                )
+            for image_path in self.extra.images:
+                nodes.append(
+                    ForwardNode(
+                        app.account,
+                        time=datetime.datetime.now(),
+                        message=MessageChain(Image(path=image_path)),
+                        name=profile.nickname,
+                    )
+                )
+
         nodes.append(
             ForwardNode(
                 app.account,
@@ -143,7 +185,10 @@ class ReminderTask(Task):
         )
 
         async def _():
-            await app.send_group_message(self.target, Forward(nodes))
+            try:
+                await app.send_group_message(self.target, Forward(nodes))
+            except ValueError:
+                await app.send_friend_message(self.target, Forward(nodes))
 
         self._task_func = _
         return self._task_func

@@ -278,12 +278,14 @@ class EasyPin(AbstractPlugin):
             crontab = full_processor.process(match_groups[0], True) + " 0"
             title = match_groups[1]
             extra = ExtraPayload()
-            if code_talker:
-                summary = code_talker.chat(f"给出下面段话内容的分点总结：\n{message.quote.origin}")
+            origin_chain = str(message.quote.origin)
+            origin_chain = origin_chain.replace("[图片]", "")
+            if origin_chain and code_talker:
+                summary = code_talker.chat(f"给出下面段话内容的分点总结：\n{origin_chain}")
                 extra.messages.append("总结：\n" + summary) if summary else None
 
                 if not title:
-                    title = code_talker.chat(f"给下面这段话一个简短的标题（16字以内）：\n{message.quote.origin}")
+                    title = code_talker.chat(f"给下面这段话一个简短的标题（16字以内，不要带引号）：\n{origin_chain}")
 
                 print(f"Grant summary: {summary}")
                 print(f"Grant title: {title}")
@@ -301,12 +303,15 @@ class EasyPin(AbstractPlugin):
                     "covered navel",
                     "cleavage",
                     "leotard",
+                    "yuri",
+                    "2girls",
                 ]
                 for i in range(7):
                     print(f"roll for pic-{i}")
                     rand_pic: str = pic_eval.rand_pic()
                     tags: Dict[str, float] = await sd_dev.interrogate(rand_pic)
                     if any(porn_word in tags for porn_word in porn_words):
+                        pathlib.Path(rand_pic).unlink()
                         continue
                     break
                 else:

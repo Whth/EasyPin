@@ -24,7 +24,7 @@ from modules.shared import (
     PermissionCode,
 )
 from .analyze import Preprocessor, DEFAULT_PRESET, TO_DATETIME_PRESET, DATETIME_TO_CRONTAB_PRESET
-from .task import ExtraPayload, crontab_to_time_stamp, crontab_to_datetime
+from .task import ExtraPayload, crontab_to_time_stamp, crontab_to_datetime, delta_time_to_simple_stamp
 from .task import TaskRegistry, ReminderTask, T_TASK
 
 __all__ = ["EasyPin"]
@@ -124,15 +124,10 @@ class EasyPin(AbstractPlugin):
                 task_datetime = crontab_to_datetime(_task.crontab)
                 delta_time: timedelta = task_datetime - datetime.now()
 
-                temp = {"天": delta_time.days, "时": delta_time.seconds // 3600, "分": delta_time.seconds % 3600 // 60}
-
-                simple_string = ""
-
-                for unit, value in temp.items():
-                    if value:
-                        simple_string += f"{value}{unit}"
-
-                task_list.append(f"{crontab_to_time_stamp(_task.crontab)}<={simple_string}后\n\t{_task.task_name}")
+                task_list.append(
+                    f"{crontab_to_time_stamp(_task.crontab)}<={delta_time_to_simple_stamp(delta_time)}后\n"
+                    f"\t{_task.task_name}"
+                )
 
             return "Task List:\n" + "\n".join(f"[{i}]: {task_info}" for i, task_info in enumerate(task_list))
 

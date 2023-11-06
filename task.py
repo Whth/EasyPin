@@ -16,6 +16,66 @@ from pydantic import BaseModel, FilePath
 from .analyze import is_crontab_expired
 
 
+def crontab_to_time_stamp(crontab: str) -> str:
+    """
+    Convert a crontab string to a timestamp.
+
+    Args:
+        crontab (str): The crontab string to be converted.
+
+    Returns:
+        int: The timestamp of the crontab.
+    Examples:
+        >>>crontab_to_time_stamp('0 15 6 11 * 0')
+        11月6日15:00
+    """
+
+    # 创建datetime对象
+    dt = datetime.datetime.strptime(crontab, "%M %H %d %m * %S")
+    # 转换为时间戳并返回
+    return dt.strftime("%m月%d日%H:%M")
+
+
+def crontab_to_datetime(crontab: str) -> datetime.datetime:
+    """
+    Convert a crontab string to a datetime object.
+
+    Args:
+        crontab (str): The crontab string to be converted.
+
+    Returns:
+        datetime.datetime: The datetime object of the crontab.
+    Examples:
+        >>>crontab_to_datetime('0 15 6 11 * 0')
+        datetime.datetime(2022, 11, 6, 15, 0)
+    """
+    return datetime.datetime.strptime(crontab + f" {datetime.datetime.now().year}", "%M %H %d %m * %S %Y")
+
+
+def delta_time_to_simple_stamp(delta_time: datetime.timedelta) -> str:
+    """
+    Convert a timedelta object to a simple timestamp string.
+
+    Args:
+        delta_time (datetime.timedelta): The timedelta object to be converted.
+
+    Returns:
+        str: The simple timestamp string of the timedelta.
+    Examples:
+        >>>delta_time_to_simple_stamp(datetime.timedelta(minutes=2))
+        00:02:00
+    """
+
+    temp = {"天": delta_time.days, "时": delta_time.seconds // 3600, "分": delta_time.seconds % 3600 // 60}
+    simple_string = ""
+
+    for unit, value in temp.items():
+        if value:
+            simple_string += f"{value}{unit}"
+
+    return simple_string
+
+
 class ExtraPayload(BaseModel):
     messages: List[str] = []
     images: List[FilePath] = []
@@ -230,21 +290,23 @@ class TaskRegistry(object):
         return self._tasks
 
     @property
-    def task_list(self) -> List[T_TASK]:
+    def task_list(self, reverse=False) -> List[T_TASK]:
         """
-        Returns a list of all tasks in the task list.
+        Return a list of tasks in the task list.
 
-        Parameters:
-            None
+        Args:
+            reverse (bool, optional): If True, the tasks will be sorted in reverse order.
+                                      Default is False.
 
         Returns:
-            List[T_TASK]: A list of all tasks in the task list.
+            List[T_TASK]: A list of tasks in the task list.
         """
         task_list: List[T_TASK] = []
         for tasks in self._tasks.values():
             for task in tasks.values():
                 task: T_TASK
                 task_list.append(task)
+        task_list.sort(key=lambda x: crontab_to_datetime(x.crontab), reverse=reverse)
         return task_list
 
     def register_task(self, task: T_TASK, with_save: bool = True) -> None:
@@ -371,56 +433,3 @@ class TaskRegistry(object):
 
         # Update the task dictionary with the temporary dictionary
         self._tasks.update(temp_dict)
-
-
-def crontab_to_time_stamp(crontab: str) -> str:
-    """
-    Convert a crontab string to a timestamp.
-
-    Args:
-        crontab (str): The crontab string to be converted.
-
-    Returns:
-        int: The timestamp of the crontab.
-    Examples:
-        >>>crontab_to_time_stamp('0 15 6 11 * 0')
-        11月6日15:00
-    """
-
-    # 创建datetime对象
-    dt = datetime.datetime.strptime(crontab, "%M %H %d %m * %S")
-    # 转换为时间戳并返回
-    return dt.strftime("%m月%d日%H:%M")
-
-
-def crontab_to_datetime(crontab: str) -> datetime.datetime:
-    """
-    Convert a crontab string to a datetime object.
-
-    Args:
-        crontab (str): The crontab string to be converted.
-
-    Returns:
-        datetime.datetime: The datetime object of the crontab.
-    Examples:
-        >>>crontab_to_datetime('0 15 6 11 * 0')
-        datetime.datetime(2022, 11, 6, 15, 0)
-    """
-    return datetime.datetime.strptime(crontab + f" {datetime.datetime.now().year}", "%M %H %d %m * %S %Y")
-
-
-def delta_time_to_simple_stamp(delta_time: datetime.timedelta) -> str:
-    """
-    Convert a timedelta object to a simple timestamp string.
-
-    Args:
-        delta_time (datetime.timedelta): The timedelta object to be converted.
-
-    Returns:
-        str: The simple timestamp string of the timedelta.
-    Examples:
-        >>>delta_time_to_simple_stamp(datetime.timedelta(minutes=2))
-        00:02:00
-    """
-
-    temp = {"天": delta_time.days, "时": delta_time.seconds // 3600, "分": delta_time.seconds % 3600 % 60}

@@ -322,9 +322,6 @@ class EasyPin(AbstractPlugin):
                 extra=extra,
             )
 
-            # Send a message to the group with the details of the scheduled task
-            await app.send_message(target, f"Schedule new task:\n {rem_task.task_name} | {crontab}")
-
             # Schedule the task using the scheduler
             scheduler.schedule(crontabify(crontab), cancelable=True)(await rem_task.make(app))
             # Register the task in the task registry
@@ -332,6 +329,13 @@ class EasyPin(AbstractPlugin):
 
             # Run the last scheduled task
             await scheduler.schedule_tasks[-1].run()
+            try:
+                # Send a message to the group with the details of the scheduled task
+                await app.send_message(target, f"Schedule new task:\n {rem_task.task_name} | {crontab}")
+            except AccountMuted:
+                pass
+            except Exception as e:
+                print(e)
 
         @self.receiver(ApplicationLaunch)
         async def fetch_tasks():

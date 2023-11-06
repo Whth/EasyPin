@@ -1,12 +1,31 @@
 import pathlib
 import re
+from datetime import datetime, timedelta
 from typing import List, Callable, Union, Dict
 
+from graia.ariadne import Ariadne
+from graia.ariadne.event.lifecycle import ApplicationLaunch
 from graia.ariadne.event.message import FriendMessage
+from graia.ariadne.event.message import GroupMessage
+from graia.ariadne.exception import AccountMuted
 from graia.ariadne.model import Friend
+from graia.ariadne.model import Group
+from graia.scheduler import GraiaScheduler
+from graia.scheduler.timers import crontabify
 
-from modules.shared import get_pwd, AbstractPlugin
-from .task import ExtraPayload
+from modules.shared import (
+    get_pwd,
+    AbstractPlugin,
+    RequiredPermission,
+    NameSpaceNode,
+    ExecutableNode,
+    required_perm_generator,
+    Permission,
+    PermissionCode,
+)
+from .analyze import Preprocessor, DEFAULT_PRESET, TO_DATETIME_PRESET, DATETIME_TO_CRONTAB_PRESET
+from .task import ExtraPayload, crontab_to_time_stamp, crontab_to_datetime
+from .task import TaskRegistry, ReminderTask, T_TASK
 
 __all__ = ["EasyPin"]
 
@@ -20,6 +39,7 @@ class CMD(object):
     TASK_TEST = "test"
     TASK_HELP = "help"
     TASK_INFO = "info"
+    TASK_RENAME = "mv"
 
 
 class External(object):
@@ -111,12 +131,22 @@ class EasyPin(AbstractPlugin):
             task_registry.remove_outdated_tasks()
             task_list = []
 
-            for tasks in task_registry.tasks.values():
-                for _task in tasks.values():
-                    _task: T_TASK
-                    task_list.append(f"{_task.task_name} | {_task.crontab}")
+            for _task in task_registry.task_list:
+                _task: T_TASK
+                task_datetime = crontab_to_datetime(_task.crontab)
+                delta_time: timedelta = task_datetime - datetime.now()
 
-            return "Task List:\n" + "\n".join(task_list)
+                temp = {"天": delta_time.days, "时": delta_time.seconds // 3600, "分": delta_time.seconds % 3600 // 60}
+
+                simple_string = ""
+
+                for unit, value in temp.items():
+                    if value:
+                        simple_string += f"{value}{unit}"
+
+                task_list.append(f"{crontab_to_time_stamp(_task.crontab)}<={simple_string}后\n\t{_task.task_name}")
+
+            return "Task List:\n" + "\n".join(f"[{i}]: {task_info}" for i, task_info in enumerate(task_list))
 
         def _clear() -> str:
             """
@@ -147,9 +177,9 @@ class EasyPin(AbstractPlugin):
             """
             # Find tasks to delete
             tasks_to_delete: List[T_TASK] = []
-            for task in task_registry.task_list:
-                if task.task_name == task_name:
-                    tasks_to_delete.append(task)
+            for _task in task_registry.task_list:
+                if _task.task_name == task_name:
+                    tasks_to_delete.append(_task)
 
             # Return if no tasks found
             if len(tasks_to_delete) == 0:
@@ -187,6 +217,21 @@ class EasyPin(AbstractPlugin):
                 await task_instance.task_func()
                 return f"Found {task_name}\n{task_instance.crontab}"
             return "No Task Matched"
+
+        def _rename(index: int, new_name: str) -> str:
+            """
+            Renames a task in the task registry.
+
+            Args:
+                index (int): The index of the task in the task registry.
+                new_name (str): The new name for the task.
+
+            Returns:
+                str: A message indicating the success of the renaming operation.
+            """
+            target_task = task_registry.task_list[index]
+            target_task.task_name = new_name
+            return f"Rename {target_task.task_name} to {target_task.crontab}"
 
         su_perm = Permission(id=PermissionCode.SuperPermission.value, name=self.get_plugin_name())
         req_perm: RequiredPermission = required_perm_generator(
@@ -226,6 +271,11 @@ class EasyPin(AbstractPlugin):
                     name=CMD.TASK_TEST,
                     source=_test_convert,
                     help_message=_test_convert.__doc__,
+                ),
+                ExecutableNode(
+                    name=CMD.TASK_RENAME,
+                    source=_rename,
+                    help_message=_rename.__doc__,
                 ),
             ],
         )

@@ -65,25 +65,13 @@ class EasyPin(AbstractPlugin):
 
     @classmethod
     def get_plugin_version(cls) -> str:
-        return "0.0.7"
+        return "0.0.8"
 
     @classmethod
     def get_plugin_author(cls) -> str:
         return "whth"
 
     def install(self):
-        from graia.scheduler import GraiaScheduler
-        from graia.scheduler.timers import crontabify
-        from graia.ariadne.event.message import GroupMessage
-        from graia.ariadne.event.lifecycle import ApplicationLaunch
-        from modules.cmd import RequiredPermission, NameSpaceNode, ExecutableNode
-        from modules.auth.resources import required_perm_generator
-        from modules.auth.permissions import Permission, PermissionCode
-        from graia.ariadne import Ariadne
-        from graia.ariadne.model import Group
-        from .analyze import Preprocessor, DEFAULT_PRESET, TO_DATETIME_PRESET, DATETIME_TO_CRONTAB_PRESET
-        from .task import TaskRegistry, ReminderTask, T_TASK
-
         scheduler: GraiaScheduler = Ariadne.current().create(GraiaScheduler)
         to_datetime_processor = Preprocessor(TO_DATETIME_PRESET)
 

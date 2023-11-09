@@ -125,11 +125,14 @@ class EasyPin(AbstractPlugin):
                 delta_time: timedelta = task_datetime - datetime.now()
 
                 task_list.append(
-                    f"{crontab_to_time_stamp(_task.crontab)}<={delta_time_to_simple_stamp(delta_time)}后\n"
-                    f"\t{_task.task_name}"
+                    f"\t📌 {_task.task_name}\n"
+                    f"\t⌛ {delta_time_to_simple_stamp(delta_time)}后发生\n"
+                    f"\t⏰ {crontab_to_time_stamp(_task.crontab)}发生"
                 )
 
-            return "Task List:\n" + "\n".join(f"[{i}]: {task_info}" for i, task_info in enumerate(task_list))
+            return "Task List:\n" + "\n".join(
+                f"----------------------\n第{i}项:\n{task_info}" for i, task_info in enumerate(task_list)
+            )
 
         def _clear() -> str:
             """

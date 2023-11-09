@@ -3,7 +3,7 @@ import json
 import pathlib
 import warnings
 from abc import abstractmethod
-from typing import List, Any, Dict, TypeVar, Type, final, Optional, Callable
+from typing import List, Any, Dict, TypeVar, Type, final, Optional, Callable, TypeAlias
 
 from colorama import Fore
 from graia.ariadne import Ariadne
@@ -263,7 +263,7 @@ class ReminderTask(Task):
         return {"remind_content": self.remind_content, "target": self.target}
 
 
-T_TASK = TypeVar("T_TASK", bound=Task)
+T_TASK: TypeAlias = TypeVar("T_TASK", bound=Task)
 
 
 class TaskRegistry(object):

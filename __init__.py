@@ -1,15 +1,15 @@
 import pathlib
 import re
 from datetime import datetime, timedelta
-from typing import List, Callable, Union, Dict
+from typing import List, Callable, Dict
 
 from graia.ariadne import Ariadne
 from graia.ariadne.event.lifecycle import ApplicationLaunch
 from graia.ariadne.event.message import FriendMessage
 from graia.ariadne.event.message import GroupMessage
 from graia.ariadne.exception import AccountMuted
-from graia.ariadne.model import Friend
-from graia.ariadne.model import Group
+from graia.ariadne.message.chain import MessageChain
+from graia.ariadne.message.element import Plain
 from graia.scheduler import GraiaScheduler
 from graia.scheduler.timers import crontabify
 
@@ -273,26 +273,24 @@ class EasyPin(AbstractPlugin):
         pic_eval = self.plugin_view.get(External.PicEval, None)
 
         @self.receiver([FriendMessage, GroupMessage])
-        async def pin_operator(app: Ariadne, target: Union[Friend, Group], message: Union[FriendMessage, GroupMessage]):
+        async def pin_operator(app: Ariadne, message: FriendMessage | GroupMessage):
             """
-            A decorator function that receives a `GroupMessage` object and handles pinning a message as a task.
-
+            This function handles the pin operation based on the received message.
             Args:
                 app (Ariadne): The Ariadne application instance.
-                target (Group): The group where the message was sent.
-                message (GroupMessage): The message to be pinned as a task.
-
-            Returns:
-                None
-
-            Raises:
-                None
+                message (FriendMessage | GroupMessage): The message object received.
             """
             # Define the pattern for matching the command and arguments
             # Check if the message has an origin attribute
             if message.quote is None:
                 return
 
+            if isinstance(message, GroupMessage):
+                target = message.sender.group
+            elif isinstance(message, FriendMessage):
+                target = message.sender
+            else:
+                raise ValueError("Unsupported message type")
             # Compile the regular expression pattern
             comp = re.compile(rf"{CMD.TASK}\s+{CMD.TASK_SET}\s+(\S+)(?:\s+(.+)|(?:\s+)?$)")
 
@@ -341,9 +339,13 @@ class EasyPin(AbstractPlugin):
                 for i in range(7):
                     print(f"roll for pic-{i}")
                     rand_pic: str = pic_eval.rand_pic()
-                    tags: Dict[str, float] = await sd_dev.interrogate(rand_pic)
+                    try:
+                        tags: Dict[str, float] = await sd_dev.interrogate(rand_pic)
+                    except:
+                        break
                     if any(porn_word in tags for porn_word in porn_words):
                         pathlib.Path(rand_pic).unlink()
+                        print("Failed, delete porn pic")
                         continue
                     break
                 else:
@@ -365,14 +367,25 @@ class EasyPin(AbstractPlugin):
             task_registry.register_task(task=rem_task)
 
             # Run the last scheduled task
-            await scheduler.schedule_tasks[-1].run()
+            active_msg = None
             try:
-                # Send a message to the group with the details of the scheduled task
-                await app.send_message(target, f"Schedule new task:\n {rem_task.task_name} | {crontab}")
+                active_msg = await app.send_message(
+                    target=target,
+                    quote=message.source,
+                    message=MessageChain(
+                        Plain(
+                            f"📢新建任务:\n{rem_task.task_name}\n"
+                            f"🏷️Crontab:\n{crontab}\n"
+                            f"⌛剩余时间:\n{delta_time_to_simple_stamp(crontab_to_datetime(crontab)-datetime.now())}"
+                        )
+                    ),
+                )
+
             except AccountMuted:
-                pass
-            except Exception as e:
-                print(e)
+                print("AccountMuted is raised, skip send message")
+            finally:
+                print(f"Send message ==> Success={bool(active_msg)}")
+            await scheduler.schedule_tasks[-1].run()
 
         @self.receiver(ApplicationLaunch)
         async def fetch_tasks():

@@ -338,7 +338,7 @@ class EasyPin(AbstractPlugin):
                 ]
                 for i in range(7):
                     print(f"roll for pic-{i}")
-                    rand_pic: str = pic_eval.rand_pic()
+                    rand_pic: str = pic_eval.rand_pic(quality=30)
                     try:
                         tags: Dict[str, float] = await sd_dev.interrogate(rand_pic)
                     except TimeoutError:

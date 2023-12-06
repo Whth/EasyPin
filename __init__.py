@@ -341,8 +341,8 @@ class EasyPin(AbstractPlugin):
                     rand_pic: str = pic_eval.rand_pic(quality=30)
                     try:
                         tags: Dict[str, float] = await sd_dev.interrogate(rand_pic)
-                    except TimeoutError:
-                        print("Failed, TimeoutError")
+                    except Exception as e:
+                        print(f"Server error: {e}")
                         break
                     if any(porn_word in tags for porn_word in porn_words):
                         pathlib.Path(rand_pic).unlink()

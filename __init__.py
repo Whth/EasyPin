@@ -319,8 +319,8 @@ class EasyPin(AbstractPlugin):
                 extra.messages.append("总结：\n" + summary) if summary else None
 
                 if not title:
-                    title = code_talker.chat(f"给下面这段话一个简短的标题（16字以内，不要带引号）：\n{origin_chain}")
-
+                    title: str = code_talker.chat(f"给下面这段话一个简短的标题（16字以内）：\n{origin_chain}")
+                    title = title.strip('"')
                 print(f"Grant summary: {summary}")
                 print(f"Grant title: {title}")
             if pic_eval and sd_dev:

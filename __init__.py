@@ -1,3 +1,4 @@
+import asyncio
 import pathlib
 import re
 from datetime import datetime, timedelta
@@ -16,12 +17,11 @@ from graia.scheduler.timers import crontabify
 from modules.shared import (
     get_pwd,
     AbstractPlugin,
-    RequiredPermission,
     NameSpaceNode,
     ExecutableNode,
-    required_perm_generator,
-    Permission,
-    PermissionCode,
+    make_stdout_seq_string,
+    EnumCMD,
+    CmdBuilder,
 )
 from .analyze import Preprocessor, DEFAULT_PRESET, TO_DATETIME_PRESET, DATETIME_TO_CRONTAB_PRESET
 from .task import ExtraPayload, crontab_to_time_stamp, crontab_to_datetime, delta_time_to_simple_stamp
@@ -30,16 +30,17 @@ from .task import TaskRegistry, ReminderTask, T_TASK
 __all__ = ["EasyPin"]
 
 
-class CMD(object):
-    TASK = "task"
-    TASK_SET = "new"
-    TASK_LIST = "list"
-    TASK_DELETE = "del"
-    TASK_CLEAN = "clean"
-    TASK_TEST = "test"
-    TASK_HELP = "help"
-    TASK_INFO = "info"
-    TASK_RENAME = "mv"
+class CMD(EnumCMD):
+    task = ["tk", "tas"]
+    set = ["s", "st"]
+    list = ["l", "ls"]
+    delete = ["d", "del"]
+    clean = ["cls", "clr"]
+    test = ["t", "te"]
+    help = ["h"]
+    info = ["inf"]
+    rename = ["mv"]
+    config = ["c", "cfg", "conf"]
 
 
 class External(object):
@@ -51,8 +52,17 @@ class External(object):
 class EasyPin(AbstractPlugin):
     CONFIG_TASKS_SAVE_PATH = "tasks_save_path"
 
+    CONFIG_ENABLE_CHECK = "enable_check"
+    CONFIG_CHECK_CRONTAB = "crontab_check"
+
+    CONFIG_CHECK_ADVANCE = "check_advance"
+    CONFIG_TARGETS = "targets"
     DefaultConfig = {
         CONFIG_TASKS_SAVE_PATH: f"{get_pwd()}/cache/tasks.json",
+        CONFIG_ENABLE_CHECK: True,
+        CONFIG_CHECK_CRONTAB: "7 7 * * * 0",
+        CONFIG_CHECK_ADVANCE: 3,
+        CONFIG_TARGETS: [],
     }
 
     @classmethod
@@ -65,7 +75,7 @@ class EasyPin(AbstractPlugin):
 
     @classmethod
     def get_plugin_version(cls) -> str:
-        return "0.1.0"
+        return "0.1.1"
 
     @classmethod
     def get_plugin_author(cls) -> str:
@@ -98,12 +108,12 @@ class EasyPin(AbstractPlugin):
             :rtype: str
             """
             cmds = {
-                CMD.TASK_SET: "用于设置任务，第一个参数为执行时间，第二个参数为任务名称，任务内容由引用的消息决定",
-                CMD.TASK_LIST: "列出所有的定时任务",
-                CMD.TASK_DELETE: "删除指定的任务",
-                CMD.TASK_CLEAN: "删除所有任务",
-                CMD.TASK_TEST: "时间字符串解释测试",
-                CMD.TASK_HELP: "展示这条信息",
+                CMD.set.name: "用于设置任务，第一个参数为执行时间，第二个参数为任务名称，任务内容由引用的消息决定",
+                CMD.list.name: "列出所有的定时任务",
+                CMD.delete.name: "删除指定的任务",
+                CMD.clean.name: "删除所有任务",
+                CMD.test.name: "时间字符串解释测试",
+                CMD.help.name: "展示这条信息",
             }
 
             stdout = "\n\n".join(f"{cmd} {help_string}" for cmd, help_string in cmds.items())
@@ -125,14 +135,12 @@ class EasyPin(AbstractPlugin):
                 delta_time: timedelta = task_datetime - datetime.now()
 
                 task_list.append(
-                    f"\t📌 {_task.task_name}\n"
+                    f"📌 {_task.task_name}\n"
                     f"\t⌛ {delta_time_to_simple_stamp(delta_time)}后发生\n"
                     f"\t⏰ {crontab_to_time_stamp(_task.crontab)}发生"
                 )
 
-            return "Task List:\n" + "\n".join(
-                f"----------------------\n第{i}项:\n{task_info}" for i, task_info in enumerate(task_list)
-            )
+            return make_stdout_seq_string(task_list, title="任务列表", extra="🫡")
 
         def _clear() -> str:
             """
@@ -219,54 +227,66 @@ class EasyPin(AbstractPlugin):
             target_task.task_name = new_name
             return f"Rename {target_task.task_name} to {target_task.crontab}"
 
-        su_perm = Permission(id=PermissionCode.SuperPermission.value, name=self.get_plugin_name())
-        req_perm: RequiredPermission = required_perm_generator(
-            target_resource_name=self.get_plugin_name(), super_permissions=[su_perm]
+        configurable = {
+            self.CONFIG_ENABLE_CHECK,
+            self.CONFIG_CHECK_ADVANCE,
+            self.CONFIG_CHECK_CRONTAB,
+        }
+        builder = CmdBuilder(
+            config_getter=self.config_registry.get_config,
+            config_setter=self.config_registry.set_config,
         )
         tree = NameSpaceNode(
-            name=CMD.TASK,
-            required_permissions=req_perm,
+            **CMD.task.export(),
+            required_permissions=self.required_permission,
             help_message=self.get_plugin_description(),
             children_node=[
                 ExecutableNode(
-                    name=CMD.TASK_INFO,
-                    help_message=_task_content.__doc__,
+                    **CMD.info.export(),
                     source=_task_content,
                 ),
                 ExecutableNode(
-                    name=CMD.TASK_HELP,
+                    **CMD.help.export(),
                     source=_help,
-                    help_message=_help.__doc__,
                 ),
                 ExecutableNode(
-                    name=CMD.TASK_CLEAN,
+                    **CMD.clean.export(),
                     source=_clear,
-                    help_message=_clear.__doc__,
                 ),
                 ExecutableNode(
-                    name=CMD.TASK_LIST,
+                    **CMD.list.export(),
                     source=_task_list,
-                    help_message=_task_list.__doc__,
                 ),
                 ExecutableNode(
-                    name=CMD.TASK_DELETE,
+                    **CMD.delete.export(),
                     source=_delete_task,
-                    help_message=_delete_task.__doc__,
                 ),
                 ExecutableNode(
-                    name=CMD.TASK_TEST,
+                    **CMD.test.export(),
                     source=_test_convert,
-                    help_message=_test_convert.__doc__,
                 ),
                 ExecutableNode(
-                    name=CMD.TASK_RENAME,
+                    **CMD.rename.export(),
                     source=_rename,
-                    help_message=_rename.__doc__,
+                ),
+                NameSpaceNode(
+                    **CMD.config.export(),
+                    help_message="配置相关命令",
+                    children_node=[
+                        ExecutableNode(
+                            **CMD.list.export(),
+                            source=builder.build_list_out_for(configurable),
+                        ),
+                        ExecutableNode(
+                            **CMD.set.export(),
+                            source=builder.build_group_setter_for(configurable),
+                        ),
+                    ],
                 ),
             ],
         )
-        self._auth_manager.add_perm_from_req(req_perm)
-        self._root_namespace_node.add_node(tree)
+
+        self.root_namespace_node.add_node(tree)
 
         sd_dev = self.plugin_view.get(External.SD_DEV, None)
         code_talker = self.plugin_view.get(External.CodeTalker, None)
@@ -389,6 +409,40 @@ class EasyPin(AbstractPlugin):
                 print(f"Send message ==> Success={bool(active_msg)}")
             await scheduler.schedule_tasks[-1].run()
 
+        async def check_task():
+            """
+            Checks if the scheduled tasks are still running.
+            """
+            tasks = task_registry.tasks
+            check_advance = self.config_registry.get_config(self.CONFIG_CHECK_ADVANCE)
+            task_to_logging = []
+            for crontab, sub_tasks in tasks.items():
+                if (crontab_to_datetime(crontab) - datetime.now()).days < check_advance:
+                    for sub_task in sub_tasks.values():
+                        string = (
+                            f"{sub_task.task_name}\n"
+                            f"\t🏷️{crontab_to_time_stamp(sub_task.crontab)}\n"
+                            f"\t⌛{delta_time_to_simple_stamp(crontab_to_datetime(sub_task.crontab) - datetime.now())}"
+                        )
+
+                        task_to_logging.append(string)
+
+            if task_to_logging:
+                app = Ariadne.current()
+                target_ids = self.config_registry.get_config(self.CONFIG_TARGETS)
+                send_targets = asyncio.gather(
+                    *[app.get_group(target_id) or app.get_friend(target_id) for target_id in target_ids]
+                )
+
+                await asyncio.gather(
+                    *[
+                        app.send_message(target, make_stdout_seq_string(task_to_logging, title="任务检查", extra="🫡"))
+                        for target in send_targets
+                    ]
+                )
+                return
+            print(f"No Task to logging, skip")
+
         @self.receiver(ApplicationLaunch)
         async def fetch_tasks():
             """
@@ -414,4 +468,12 @@ class EasyPin(AbstractPlugin):
                 f"------------------------------\n{Fore.RESET}"
             )
             print(stdout)
+
+            try:
+                scheduler.schedule(timer=crontabify(self.config_registry.get_config(self.CONFIG_CHECK_CRONTAB)))(
+                    check_task
+                )
+            except Exception:
+                pass
+
             await scheduler.run()

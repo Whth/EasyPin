@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timedelta
 from typing import List, Callable, Dict
 
+from colorama import Fore
 from graia.ariadne import Ariadne
 from graia.ariadne.event.lifecycle import ApplicationLaunch
 from graia.ariadne.event.message import FriendMessage
@@ -22,6 +23,8 @@ from modules.shared import (
     make_stdout_seq_string,
     EnumCMD,
     CmdBuilder,
+    make_regex_part_from_enum,
+    assemble_cmd_regex_parts,
 )
 from .analyze import Preprocessor, DEFAULT_PRESET, TO_DATETIME_PRESET, DATETIME_TO_CRONTAB_PRESET
 from .task import ExtraPayload, crontab_to_time_stamp, crontab_to_datetime, delta_time_to_simple_stamp
@@ -41,6 +44,7 @@ class CMD(EnumCMD):
     info = ["inf"]
     rename = ["mv"]
     config = ["c", "cfg", "conf"]
+    new = ["n", "ne"]
 
 
 class External(object):
@@ -59,7 +63,7 @@ class EasyPin(AbstractPlugin):
     CONFIG_TARGETS = "targets"
     DefaultConfig = {
         CONFIG_TASKS_SAVE_PATH: f"{get_pwd()}/cache/tasks.json",
-        CONFIG_ENABLE_CHECK: True,
+        CONFIG_ENABLE_CHECK: 1,
         CONFIG_CHECK_CRONTAB: "7 7 * * * 0",
         CONFIG_CHECK_ADVANCE: 3,
         CONFIG_TARGETS: [],
@@ -269,6 +273,7 @@ class EasyPin(AbstractPlugin):
                     **CMD.rename.export(),
                     source=_rename,
                 ),
+                ExecutableNode(**CMD.new.export(), source=lambda: None),
                 NameSpaceNode(
                     **CMD.config.export(),
                     help_message="配置相关命令",
@@ -312,7 +317,15 @@ class EasyPin(AbstractPlugin):
             else:
                 raise ValueError("Unsupported message type")
             # Compile the regular expression pattern
-            comp = re.compile(rf"{CMD.TASK}\s+{CMD.TASK_SET}\s+(\S+)(?:\s+(.+)|(?:\s+)?$)")
+            comp = re.compile(
+                assemble_cmd_regex_parts(
+                    [
+                        make_regex_part_from_enum(CMD.task),
+                        make_regex_part_from_enum(CMD.new),
+                        r"(\S+)(?:\s+(.+)|(?:\s+)?$)",
+                    ]
+                )
+            )
 
             # Find all matches of the pattern in the message
             matches = comp.findall(str(message.message_chain))
@@ -407,17 +420,20 @@ class EasyPin(AbstractPlugin):
                 print("AccountMuted is raised, skip send message")
             finally:
                 print(f"Send message ==> Success={bool(active_msg)}")
-            await scheduler.schedule_tasks[-1].run()
+                await scheduler.schedule_tasks[-1].run()
 
         async def check_task():
             """
             Checks if the scheduled tasks are still running.
             """
+            if not self.config_registry.get_config(self.CONFIG_ENABLE_CHECK):
+                print(f"{Fore.MAGENTA}Skip check task,Because it's disabled.{Fore.RESET}")
+                return
             tasks = task_registry.tasks
             check_advance = self.config_registry.get_config(self.CONFIG_CHECK_ADVANCE)
             task_to_logging = []
             for crontab, sub_tasks in tasks.items():
-                if (crontab_to_datetime(crontab) - datetime.now()).days < check_advance:
+                if (crontab_to_datetime(crontab) - datetime.now()).days <= check_advance:
                     for sub_task in sub_tasks.values():
                         string = (
                             f"{sub_task.task_name}\n"
@@ -430,10 +446,14 @@ class EasyPin(AbstractPlugin):
             if task_to_logging:
                 app = Ariadne.current()
                 target_ids = self.config_registry.get_config(self.CONFIG_TARGETS)
-                send_targets = asyncio.gather(
-                    *[app.get_group(target_id) or app.get_friend(target_id) for target_id in target_ids]
+                send_targets = await asyncio.gather(
+                    *(
+                        [app.get_friend(target_id) for target_id in target_ids]
+                        + [app.get_group(target_id) for target_id in target_ids]
+                    )
                 )
 
+                send_targets = filter(bool, send_targets)
                 await asyncio.gather(
                     *[
                         app.send_message(target, make_stdout_seq_string(task_to_logging, title="任务检查", extra="🫡"))
@@ -467,13 +487,16 @@ class EasyPin(AbstractPlugin):
                 f"{Fore.YELLOW}Fetched {len(scheduler.schedule_tasks)} tasks\n"
                 f"------------------------------\n{Fore.RESET}"
             )
-            print(stdout)
 
             try:
                 scheduler.schedule(timer=crontabify(self.config_registry.get_config(self.CONFIG_CHECK_CRONTAB)))(
                     check_task
                 )
-            except Exception:
-                pass
-
+                stdout += (
+                    f"{Fore.MAGENTA}Scheduled check task {self.config_registry.get_config(self.CONFIG_CHECK_CRONTAB)}\n"
+                )
+            except Exception as e:
+                stdout += f"{Fore.RED}Failed to schedule check task\n" f"{e}\n{Fore.RESET}"
+            finally:
+                print(stdout)
             await scheduler.run()

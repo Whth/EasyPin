@@ -143,8 +143,11 @@ class EasyPin(AbstractPlugin):
                     f"\t⌛ {delta_time_to_simple_stamp(delta_time)}后发生\n"
                     f"\t⏰ {crontab_to_time_stamp(_task.crontab)}发生"
                 )
+            extra_string = "🫡\n"
+            if self.config_registry.get_config(self.CONFIG_ENABLE_CHECK):
+                extra_string += f"对每项任务会提前[{self.config_registry.get_config(self.CONFIG_CHECK_ADVANCE)}]天进行提醒"
 
-            return make_stdout_seq_string(task_list, title="任务列表", extra="🫡")
+            return make_stdout_seq_string(task_list, title="任务列表", extra=extra_string)
 
         def _clear() -> str:
             """
@@ -273,7 +276,7 @@ class EasyPin(AbstractPlugin):
                     **CMD.rename.export(),
                     source=_rename,
                 ),
-                ExecutableNode(**CMD.new.export(), source=lambda: None),
+                ExecutableNode(**CMD.new.export(), source=lambda *x: None),
                 NameSpaceNode(
                     **CMD.config.export(),
                     help_message="配置相关命令",
@@ -307,6 +310,7 @@ class EasyPin(AbstractPlugin):
             """
             # Define the pattern for matching the command and arguments
             # Check if the message has an origin attribute
+
             if message.quote is None:
                 return
 

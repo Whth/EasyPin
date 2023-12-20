@@ -265,6 +265,11 @@ class ReminderTask(Task):
 
 T_TASK: TypeAlias = TypeVar("T_TASK", bound=Task)
 
+Crontab: TypeAlias = str
+TaskName: TypeAlias = str
+TaskContainer: TypeAlias = Dict[TaskName, T_TASK]
+TimeTable: TypeAlias = Dict[Crontab, TaskContainer]
+
 
 class TaskRegistry(object):
     def __init__(
@@ -274,18 +279,19 @@ class TaskRegistry(object):
     ):
         self._save_path: str = save_path
         self._task_type: Type[T_TASK] = task_type
-        self._tasks: Dict[str, Dict[str, T_TASK]] = {}
+        self._tasks: TimeTable = {}
+        self._out_dated_tasks: TimeTable = {}
         if pathlib.Path(save_path).exists():
             self.load_tasks()
             self.remove_outdated_tasks()
 
     @property
-    def tasks(self) -> Dict[str, Dict[str, T_TASK]]:
+    def tasks(self) -> TimeTable:
         """
         Return the dictionary of tasks.
 
         :return: A dictionary containing tasks.
-        :rtype: Dict[str, Dict[str, T_TASK]]
+        :rtype: TimeTable
         """
         return self._tasks
 
@@ -341,11 +347,15 @@ class TaskRegistry(object):
         Returns:
             None.
         """
-        Unexpired_tasks: Dict[str, Dict[str, T_TASK]] = {}
+        unexpired_tasks: TimeTable = {}
+        expired_tasks: TimeTable = {}
         for crontab, tasks in self._tasks.items():
-            if not is_crontab_expired(crontab):
-                Unexpired_tasks[crontab] = tasks
-        self._tasks = Unexpired_tasks
+            if is_crontab_expired(crontab):
+                expired_tasks[crontab] = tasks
+            else:
+                unexpired_tasks[crontab] = tasks
+        self._out_dated_tasks = expired_tasks
+        self._tasks = unexpired_tasks
 
     def load_tasks(self):
         """
@@ -363,7 +373,7 @@ class TaskRegistry(object):
         if not pathlib.Path(self._save_path).exists():
             return
         with open(self._save_path, "r", encoding="utf-8") as f:
-            temp_dict: Dict[str, Dict[str, Dict[str, Any]]] = json.load(f)
+            temp_dict: Dict[Crontab, Dict[TaskName, Any]] = json.load(f)
         for crontab, tasks in temp_dict.items():
             self._tasks[crontab] = {}
             for task_name, task_data in tasks.items():
@@ -385,8 +395,11 @@ class TaskRegistry(object):
         """
         print(f"{Fore.MAGENTA}Saving tasks to {self._save_path}")
         pathlib.Path(self._save_path).parent.mkdir(parents=True, exist_ok=True)
-        temp_dict: Dict[str, Dict[str, Dict[str, Any]]] = {}
-        for crontab, tasks in self._tasks.items():
+        temp_dict: Dict[Crontab, Dict[TaskName, Any]] = {}
+        merged: TimeTable = {}
+        merged.update(self._tasks)
+        merged.update(self._out_dated_tasks)
+        for crontab, tasks in merged.items():
             temp_dict[crontab] = {}
             for task_name, task in tasks.items():
                 task: T_TASK
@@ -408,7 +421,7 @@ class TaskRegistry(object):
             target_info (str): The identifier of the task to be removed.
         """
         # Create a temporary dictionary to store the updated tasks
-        temp_dict: Dict[str, Dict[str, T_TASK]] = {}
+        temp_dict: TimeTable = {}
 
         # Iterate over the existing tasks
         for crontab, tasks in self._tasks.items():

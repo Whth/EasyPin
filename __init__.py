@@ -433,6 +433,7 @@ class EasyPin(AbstractPlugin):
             if not self.config_registry.get_config(self.CONFIG_ENABLE_CHECK):
                 print(f"{Fore.MAGENTA}Skip check task,Because it's disabled.{Fore.RESET}")
                 return
+            task_registry.remove_outdated_tasks()
             tasks = task_registry.tasks
             check_advance = self.config_registry.get_config(self.CONFIG_CHECK_ADVANCE)
             task_to_logging = []

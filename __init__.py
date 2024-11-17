@@ -61,12 +61,15 @@ class EasyPin(AbstractPlugin):
 
     CONFIG_CHECK_ADVANCE = "check_advance"
     CONFIG_TARGETS = "targets"
+
+    CONFIG_EXTRA_PIC = "ext_pic"
     DefaultConfig = {
         CONFIG_TASKS_SAVE_PATH: f"{get_pwd()}/cache/tasks.json",
         CONFIG_ENABLE_CHECK: 1,
         CONFIG_CHECK_CRONTAB: "7 7 * * * 0",
         CONFIG_CHECK_ADVANCE: 3,
         CONFIG_TARGETS: [],
+        CONFIG_EXTRA_PIC: 0,
     }
 
     @classmethod
@@ -145,7 +148,9 @@ class EasyPin(AbstractPlugin):
                 )
             extra_string = "🫡\n"
             if self.config_registry.get_config(self.CONFIG_ENABLE_CHECK):
-                extra_string += f"对每项任务会提前[{self.config_registry.get_config(self.CONFIG_CHECK_ADVANCE)}]天进行提醒"
+                extra_string += (
+                    f"对每项任务会提前[{self.config_registry.get_config(self.CONFIG_CHECK_ADVANCE)}]天进行提醒"
+                )
 
             return make_stdout_seq_string(task_list, title="任务列表", extra=extra_string)
 
@@ -360,7 +365,7 @@ class EasyPin(AbstractPlugin):
                     title = title.strip('"')
                 print(f"Grant summary: {summary}")
                 print(f"Grant title: {title}")
-            if pic_eval and sd_dev:
+            if self.config_registry.get_config(self.CONFIG_EXTRA_PIC) and pic_eval and sd_dev:
                 porn_words = [
                     "nipples",
                     "pussy",
